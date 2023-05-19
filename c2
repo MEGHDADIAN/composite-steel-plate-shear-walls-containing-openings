@@ -1,0 +1,207 @@
+Computation of Elastic Buckling Load for plates 
+clc 
+clear all 
+% 4  side =simple 
+% units: Kg ,Cm 
+%% show time 
+tic 
+digits(64); 
+%% Identification variables 
+syms  a g h p q zigmax0 zigmaxx zigmay0 zigmayy zigmaxy zigm zig nn r real b1 b2 b3 b4; 
+n=input('length of element=');alfa=input('[2=bending-x or 0=axial-x], alfa=');  beta=input('[2=bending-y or 0=axial-y], beta='); 
+c=input('c=1 zigma in x ='); d=input('d=1 zigma in y='); e=input('e=1 zigma in xy=');nn=7; % nn =power for polynominal+1 
+tc=input('thickness of foundation='); fc=input('consrete strength='); 
+E=input('Elastic module of steel plate='); v=input('the Povasson ratio of steel plate='); 
+t=input('thickness of steel plste='); gam=input('the ratio length to width='); 
+a=input('length of steel plate'); b=input(' widt of steel plate'); numbolt=input('number of bolts='); 
+H=[1,h,h^2,h^3,h^4,h^5,h^6,g^7]; 
+G=[1;g;g^2;g^3;g^4;g^5,g^6,g^7]; 
+% Displacement function 
+w=(1+g)*(1-g)*(1+h)*(1-h)*(G)*(H); % polynominal for displacement(predict), matrix(nn+1*nn+1) 
+for i=0:nn-1 
+    w1(1,i*nn+1:nn*(i+1))=w(i+1,:); % polynominal for displacement(predict), matrix(1*1) 
+end 
+ %******************************** 
+ %% Stiffness matrix 
+strainx=(-4/a^2)*diff(w1,g,2); 
+strainy=(-4*gam^2/a^2)*diff(w1,h,2); 
+strainxy=(8*gam/a^2)*diff(diff(w1,g),h); 
+BN(1,:)=strainx; BN(2,:)=strainy; BN(3,:)=strainxy;% B=[strainx; strainy ;strainxy]; 
+DN=(E*t^3)/(12*(1-v^2))*[1 v 0; v 1 0;0 0 (1-v)/2]; %  E= 2e6; v=0.3; t= 1; 
+MATKB=transpose (BN)*DN*BN; 
+KB=int((int(MATKB,g,-1,1)),h,-1,1); %  stiffness matrix 
+ %********************************* 
+ %% Geometry matrix (external work) 
+syms g h ; 
+if c==1 & alfa==0 & d==0 & e==0 
+    zig =zigmaxx 
+elseif c==0 & alfa==2 & d==0 & e==0 
+    zig =zigmax0 
+elseif  c==0 & d==1 & beta==0 & e==0 
+    zig =zigmayy 
+elseif  c==0 & d==0 & beta==2 & e==0 
+    zig =zigmay0 
+elseif  c==0 & d==0 &  e==1 
+    zig =zigmaxy 
+end 
+zigmax=c*(zigmaxx)+alfa/2*h*(zigmax0) ; zigmay=d*(zigmayy)+beta/2*g*(zigmay0);zigmaxy=e*(zigmaxy); GN=[2/a*diff(w1,g);2/a*gam*diff(w1,h)]; 
+NN=[c+alfa/2*h e; e d+beta/2*g]; %N=[zigmax zigmaxy ; zigmaxy zigmay]; 
+MATKG=transpose(GN)*NN*GN; 
+KG=int((int(MATKG,g,-1,1)),h,-1,1); % geometry matrix
+%**********************************
+%% for bolts (weigth of concrete)
+NNB=[1 1; 1 2400*tc *b/numbolt];
+MATKGBO=transpose(GN)*NNB*GN
+KGB=0;
+for g=-1:numbolt^0.5:1
+for h=-1:numbolt^0.5:1
+MATKGB=int(MATKG,g,-1,1)+KGB
+KGB=FW1GHBO7(g,h)+KGB; FW1TGHBO7(g,h) is function for coordinate in position of bolts
+end
+end
+%% For bolts (4 bolt) (Constraints)
+KT=0;Beta=[b1,b2,b3,b4]
+for g=-1:numbolt^0.5:1
+for h=-1:numbolt^0.5:1
+w1(1,i*nn+1:nn*(i+1))=w(i+1,:)
+KT=transpose(Beta)*FW1GHBO7(g,h)+KT;
+end
+end
+%**********************************
+%% Total of potential energy until this stage
+syms g h;
+AA=vpa(inv(KG+KGB-KT)*KB); % for solve eigenvalue
+[vv ee]=eig(AA); % for solve eigenvalue
+for i=0:nn*nn-1
+landa(i+1,1)=ee(i*nn*nn+i+1);
+end
+landas=sort(abs(landa));
+for f=1:nn*nn % for get eigenvector
+if landas(1)==landa(f,1)
+i=f
+% Converge based on Aitken extrapolation
+vectorans=(vv(:,i-2)*vv(:,i)-(vv(:,i-1))^2)/(vv(:,i-2)-2*vv(:,i-1)+vv(:,i))
+end
+end
+zigans=landas(1,1)
+vectorans=vv(:,i);
+for i=0:nn-1
+A(1:nn,i+1)=vectorans(i*nn+1:nn*(i+1));
+end
+wsolve=(1+g)*(1-g)*(1+h)*(1-h)*H*A*G % size wsolve =(1*1)
+for i=1:nn*nn
+w1new(1,i)=vectorans(i)*w1(i); % size w1new=1*(nn*nn)
+end
+%**************************************************************************
+%% Energy for foundation
+% account for concrete stress-strain
+g=0; h=0; contact=subs(wsolve);
+S=0;
+for h=-1:n:1
+for g=-1:n:1
+sumw=0;
+for j=1:nn*nn
+sumw = subs(w1new(j))+ sumw;
+end
+if sumw>=0 & contact>=0
+cont=0;
+elseif sumw<0 & contact<0
+cont=0;
+else cont=1;
+end
+straincon=abs(subs(sumw/t));
+if straincon<=0.002
+stresscon=fc*(2*(straincon/0.002)-(straincon/0.002)^2);
+elseif 0.002<straincon<(0.002+ 0.8/(0.5/((3+0.29*fc)/(144*fc-1000)-0.002)))
+stresscon=fc*(1-(0.5/((3+0.29*fc)/(144*fc-1000)-0.002))*(straincon-0.002));
+elseif straincon>=(0.002+0.8/(0.5/((3+0.29*fc)/(144*fc-1000)-0.002)))
+stresscon=0.2*fc;
+end
+S=cont*stresscon*FW1TGH7(g,h)*FW1GH7(g,h)+S; % FW1TGH7(g,h) and FW1GH7(g,h) are function for
+w1 that power of polynominal is 7
+end
+end
+%% % new potential energy
+% Accounting for coefficient matrix for new potential energy
+syms g h ;
+%V1=KB+S-KG;
+AA1=vpa(inv(KG)*(KB+S));
+[vv1 ee1]=eig(AA1);
+for i=0:nn*nn-1
+landa1(i+1,1)=ee1(i*nn*nn+i+1);
+end
+landas1=sort(abs(landa1));
+for i=1:nn*nn
+if landas1(1)==landa1(i,1)
+j=i;
+end
+end
+zigans1=landas1(1,1)
+vectorans1=vv1(:,j);
+for i=0:nn-1
+A1(1:nn,i+1)=vectorans1(i*nn+1:nn*(i+1));
+end
+wsolve1=(1+g)*(1-g)*(1+h)*(1-h)*H*A1*G % size wsolve1=(1*1)
+for i=1:nn*nn
+w1new1(1,i)=vectorans1(i)*w1(i); % size w1new=1*(nn*nn)
+end
+%**************************************************************************
+%% Again energy for foundation
+% Accounting for concrete stress-strain
+num=0;
+while num<5
+g=0; h=0; contact=subs(wsolve1);
+num=num+1
+S=0;
+for h=-1:n:1
+for g=-1:n:1
+0;
+for j=1:nn*nn
+sumw = subs(w1new1(j))+ sumw;
+end
+if sumw>=0 & contact>=0
+cont=0;
+elseif sumw<0 & contact<0
+cont=0;
+else cont=1;
+end
+straincon=abs(subs(sumw/t));
+if straincon<=0.002
+stresscon=fc*(2*(straincon/0.002)-(straincon/0.002)^2);
+elseif 0.002<straincon<(0.002+ 0.8/(0.5/((3+0.29*fc)/(144*fc-1000)-0.002)))
+stresscon=fc*(1-(0.5/((3+0.29*fc)/(144*fc-1000)-0.002))*(straincon-0.002));
+elseif straincon>=(0.002+0.8/(0.5/((3+0.29*fc)/(144*fc-1000)-0.002)))
+stresscon=0.2*fc;
+end
+S=cont*stresscon*FW1TGH7(g,h)*FW1GH7(g,h)+S; % FW1TGH7(g,h) and FW1GH7(g,h) are function
+for w1 that power of polynominal is 7
+end
+end
+% new potential energy
+% accounting for coefficient matrix for continue in follow
+syms g h ;
+AA1=vpa(inv(KG+KGB-KT)*(KB+S));
+[vv1 ee1]=eig(AA1);
+for i=0:nn*nn-1
+landa1(i+1,1)=ee1(i*nn*nn+i+1);
+end
+landas1=sort(abs(landa1));
+for i=1:nn*nn
+if landas1(1)==landa1(i,1)
+j=i;
+end
+end
+zigans1=landas1(1,1)
+vectorans1=vv1(:,j);
+for i=0:nn-1
+A1(1:nn,i+1)=vectorans1(i*nn+1:nn*(i+1));
+% converge based on Aitken extrapolation
+vectorans1=(vv1(:,i-2)*vv1(:,i)-(vv1(:,i-1))^2)/(vv1(:,i-2)-2*vv1(:,i-1)+vv1(:,i))
+end
+end
+wsolve1=(1+g)*(1-g)*(1+h)*(1-h)*H*A1*G % size wsolve1=(1*1)
+for i=1:nn*nn
+w1new1(1,i)=vectorans1(i)*w1(i); % size w1new=1*(nn*nn)
+end
+end
+toc
