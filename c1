@@ -1,0 +1,92 @@
+import numpy as np
+
+# Identification variables
+n = int(input('length of element='))
+alfa = int(input('[2=bending-x or 0=axial-x], alfa='))
+beta = int(input('[2=bending-y or 0=axial-y], beta='))
+c = int(input('c=1 zigma in x ='))
+d = int(input('d=1 zigma in y='))
+e = int(input('e=1 zigma in xy='))
+nn = 7
+tc = float(input('thickness of foundation='))
+fc = float(input('consrete strength='))
+E = float(input('Elastic module of steel plate='))
+v = float(input('the Povasson ratio of steel plate='))
+t = float(input('thickness of steel plate='))
+gam = float(input('the ratio length to width='))
+a = float(input('length of steel plate='))
+b = float(input('widt of steel plate='))
+numbolt = int(input('number of bolts='))
+H = np.array([1, a, a**2, a**3, a**4, a**5, a**6, a**7])
+G = np.array([1, b, b**2, b**3, b**4, b**5, b**6, b**7])
+
+# Displacement function
+w = np.outer((1 + G) * (1 - G) * (1 + H) * (1 - H))
+w1 = np.reshape(w[:-1, :-1], (1, -1))
+
+# Stiffness matrix
+strainx = (-4 / a**2) * np.diff(w1, n=2, axis=1)
+strainy = (-4 * gam**2 / a**2) * np.diff(w1, n=2, axis=0)
+strainxy = (8 * gam / a**2) * np.diff(np.diff(w1, axis=0), axis=1)
+BN = np.vstack((strainx, strainy, strainxy))
+DN = (E * t**3) / (12 * (1 - v**2)) * np.array([[1, v, 0], [v, 1, 0], [0, 0, (1 - v) / 2]])
+MATKB = np.transpose(BN) @ DN @ BN
+KB = np.trapz(np.trapz(MATKB, x=[-1, 1]), x=[-1, 1])
+
+# Geometry matrix (external work)
+if c == 1 and alfa == 0 and d == 0 and e == 0:
+    zig = zigmaxx
+elif c == 0 and alfa == 2 and d == 0 and e == 0:
+    zig = zigmax0
+elif c == 0 and d == 1 and beta == 0 and e == 0:
+    zig = zigmayy
+elif c == 0 and d == 0 and beta == 2 and e == 0:
+    zig = zigmay0
+elif c == 0 and d == 0 and e == 1:
+    zig = zigmaxy
+
+zigmax = c * zigmaxx + alfa / 2 * h * zigmax0
+zigmay = d * zigmayy + beta / 2 * g * zigmay0
+zigmaxy = e * zigmaxy
+GN = np.vstack((2 / a * np.diff(w1, axis=1), 2 / a * gam * np.diff.
+(w1, axis=0), np.diff(w1, axis=0)))
+MATG = np.transpose(GN) @ np.array([[zigmax, zigmaxy], [zigmaxy, zigmay]]) @ GN
+KG = np.trapz(np.trapz(MATG, x=[-1, 1]), x=[-1, 1])
+
+Boundary conditions
+KN = np.zeros((nn * nn, nn * nn))
+KN[:nn, :nn] = np.copy(KB)
+KN[-nn:, -nn:] = np.copy(KB)
+KN[nn * (nn - 1)::nn, nn * (nn - 1)::nn] = np.copy(KB)
+KN[::nn, ::nn] = np.copy(KB)
+KN[nn:-nn, nn:-nn] = np.copy(KG)
+
+Support conditions
+KN[0, 0] = 1e30
+KN[1, 1] = 1e30
+KN[-1, -1] = 1e30
+KN[-2, -2] = 1e30
+KN[nn * (nn - 1), nn * (nn - 1)] = 1e30
+KN[nn * (nn - 1) + 1, nn * (nn - 1) + 1] = 1e30
+KN[nn * nn - 1, nn * nn - 1] = 1e30
+KN[nn * nn - 2, nn * nn - 2] = 1e30
+
+Load vector
+P = np.zeros((nn * nn, 1))
+P[nn * (nn - 1) + nn // 2] = -10
+
+Displacement vector
+U = np.linalg.solve(KN, P)
+
+Reshape the displacement vector to match the shape of the plate
+U = np.reshape(U, (nn, nn))
+
+Print the displacement results
+print("Displacement:")
+print(U)
+
+This code calculates the displacement of a rectangular plate under given boundary conditions and loads using the finite element method. It involves the calculation of the stiffness matrix, geometry matrix, boundary conditions, support conditions, load vector, and displacement vector. Finally, it prints the displacement results.
+
+Note that the code assumes that you have defined the functions `zigmaxx`, `zigmax0`, `zigmayy`, `zigmay0`, and `zigmaxy` appropriately.
+
+Make sure to provide the necessary inputs when prompted, and adjust the code as needed for your specific requirements.
